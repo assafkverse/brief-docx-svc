@@ -1,57 +1,45 @@
 from fastapi import FastAPI, Body
 from fastapi.staticfiles import StaticFiles
 from docx import Document
+from docx.enum.style import WD_STYLE_TYPE
 from uuid import uuid4
-import os
-import re
+import os, re
 
 app = FastAPI()
+BASE_DIR = "generated/downloads"
+os.makedirs(BASE_DIR, exist_ok=True)
+app.mount("/static", StaticFiles(directory="generated"), name="static")
 
-# ---------------------------------------------------------------------------
-#  Configuration
-# ---------------------------------------------------------------------------
-BASE_DIR = "generated"          # persistent disk or local dir
-SUB_DIR  = "downloads"          # keep docs in a nice sub‑folder
-OUTPUT_DIR = os.path.join(BASE_DIR, SUB_DIR)
+hdr1 = re.compile(r"^# (.*)")
+hdr2 = re.compile(r"^## (.*)")
+bullet = re.compile(r"^[-*] (.*)")
 
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+def md_to_docx(md: str, path: str):
+    doc = Document()
 
-# expose /static/** so docs are downloadable via HTTPS
-app.mount("/static", StaticFiles(directory=BASE_DIR), name="static")
+    # guarantee bullet style exists
+    if "List Bullet" not in [s.name for s in doc.styles]:
+        doc.styles.add_style("List Bullet", WD_STYLE_TYPE.PARAGRAPH).base_style = doc.styles["Normal"]
 
-# ---------------------------------------------------------------------------
-#  Helpers
-# ---------------------------------------------------------------------------
-_invalid = re.compile(r"[^A-Za-z0-9_.-]")
+    for line in md.splitlines():
+        if m := hdr1.match(line):
+            doc.add_heading(m.group(1), level=1)
+        elif m := hdr2.match(line):
+            doc.add_heading(m.group(1), level=2)
+        elif m := bullet.match(line):
+            p = doc.add_paragraph(m.group(1))
+            p.style = "List Bullet"
+        else:
+            doc.add_paragraph(line)
+    doc.save(path)
 
-def safe_filename(raw: str | None) -> str:
-    """Sanitise the requested filename or fall back to UUID."""
-    if not raw:
-        return f"{uuid4()}.docx"
-    name = _invalid.sub("_", raw).strip("._")
-    if not name:
-        name = str(uuid4())
-    if not name.lower().endswith(".docx"):
-        name += ".docx"
-    return name
-
-# ---------------------------------------------------------------------------
-#  Route: POST /docx
-# ---------------------------------------------------------------------------
 @app.post("/docx")
 def make_docx(payload: dict = Body(...)):
-    """Convert incoming Markdown to a Word document and return download URL."""
-    md: str = payload["markdown"]
-    filename = safe_filename(payload.get("filename"))
-    full_path = os.path.join(OUTPUT_DIR, filename)
+    md = payload["markdown"]
+    fname = f"{uuid4()}.docx"
+    full = os.path.join(BASE_DIR, fname)
 
-    # create .docx
-    doc = Document()
-    for line in md.splitlines():
-        doc.add_paragraph(line)
-    doc.save(full_path)
+    md_to_docx(md, full)
 
     host = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "localhost")
-    return {
-        "download_url": f"https://{host}/static/{SUB_DIR}/{filename}"
-    }
+    return {"download_url": f"https://{host}/static/downloads/{fname}"}
