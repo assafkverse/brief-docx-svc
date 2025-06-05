@@ -1,12 +1,16 @@
 from fastapi import FastAPI, Body
-from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from docx import Document
 from uuid import uuid4
 import os
-from docx import Document   # pip install python-docx
 
 app = FastAPI()
+
 OUTPUT_DIR = "generated"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# serve runtime files
+app.mount("/static", StaticFiles(directory=OUTPUT_DIR), name="static")
 
 @app.post("/docx")
 def make_docx(payload: dict = Body(...)):
@@ -19,5 +23,5 @@ def make_docx(payload: dict = Body(...)):
         doc.add_paragraph(line)
     doc.save(path)
 
-    # Render מגישה קבצים ב־/static אוטומטית אם נגדיר
-    return {"download_url": f"https://{os.environ['RENDER_EXTERNAL_HOSTNAME']}/static/{filename}"}
+    host = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "localhost")
+    return {"download_url": f"https://{host}/static/{filename}"}
