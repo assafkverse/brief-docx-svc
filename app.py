@@ -6,7 +6,7 @@ Files stored under /static/downloads/ ."""
 from fastapi import FastAPI, Body
 from fastapi.staticfiles import StaticFiles
 from docx import Document
-from docx.enum.style import WD\_STYLE\_TYPE
+from docx.enum.style import WD_STYLE_TYPE
 from docx.table import \_Cell
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
@@ -122,8 +122,6 @@ while i < len(lines):
     i += 1
 doc.save(path)
 ```
-
-app = FastAPI()
 
 @app.post("/docx")
 def make\_docx(payload: dict = Body(...)):
